@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>EV Journey Simulator - South Africa</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- A-Frame for AR -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      #map {
+        height: 100%;
+        width: 100%;
+      }
+
+      #arView {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+      }
+
+      #arView.active {
+        display: block;
+      }
+
+      /* Main Control Panel */
+      #panelContainer {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 2000;
+        max-width: 380px;
+      }
+
+      #panelToggle {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 14px 24px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: bold;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.3s;
+      }
+
+      #panelToggle:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+      }
+
+      #panel {
+        background-color: rgba(255, 255, 255, 0.97);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        max-height: 88vh;
+        overflow-y: auto;
+        transition: all 0.3s ease;
+      }
+
+      #panel.hidden {
+        display: none;
+      }
+
+      /* Journey Planning Section */
+      .section {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        border-left: 4px solid #667eea;
+      }
+
+      .section h3 {
+        margin: 0 0 12px 0;
+        color: #333;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* Vehicle Info Card */
+      .vehicle-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 16px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      }
+
+      .vehicle-name {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .vehicle-specs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        font-size: 13px;
+      }
+
+      .spec-item {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 8px;
+        border-radius: 6px;
+      }
+
+      .spec-label {
+        opacity: 0.9;
+        font-size: 11px;
+      }
+
+      .spec-value {
+        font-weight: bold;
+        font-size: 15px;
+        margin-top: 2px;
+      }
+
+      /* Battery Status */
+      .battery-status {
+        margin-bottom: 15px;
+      }
+
+      .battery-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .battery-bar-container {
+        background: #e9ecef;
+        height: 40px;
+        border-radius: 10px;
+        overflow: hidden;
+        position: relative;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+      }
+
+      .battery-bar {
+        height: 100%;
+        transition: width 0.5s ease, background 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: white;
+        font-size: 15px;
+        position: relative;
+      }
+
+      .battery-bar.critical {
+        background: linear-gradient(90deg, #dc3545 0%, #c82333 100%);
+      }
+
+      .battery-bar.low {
+        background: linear-gradient(90deg, #ffc107 0%, #e0a800 100%);
+      }
+
+      .battery-bar.medium {
+        background: linear-gradient(90deg, #17a2b8 0%, #138496 100%);
+      }
+
+      .battery-bar.good {
+        background: linear-gradient(90deg, #28a745 0%, #218838 100%);
+      }
+
+      .range-info {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-size: 12px;
+        color: #666;
+      }
+
+      /* Journey Planner */
+      .input-group {
+        margin-bottom: 12px;
+      }
+
+      .input-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        color: #495057;
+      }
+
+      .input-group input,
+      .input-group select {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #dee2e6;
+        border-radius: 6px;
+        font-size: 14px;
+        box-sizing: border-box;
+        transition: border-color 0.2s;
+      }
+
+      .input-group input:focus,
+      .input-group select:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      /* Buttons */
+      .btn {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-top: 8px;
+      }
+
+      .btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .btn-success {
+        background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+        color: white;
+      }
+
+      .btn-warning {
+        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+        color: #000;
+      }
+
+      .btn-danger {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+      }
+
+      .btn-info {
+        background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+        color: white;
+      }
+
+      /* Journey Status */
+      .journey-status {
+        background: white;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+
+      .status-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: 13px;
+      }
+
+      .status-item:last-child {
+        border-bottom: none;
+      }
+
+      .status-label {
+        color: #666;
+      }
+
+      .status-value {
+        font-weight: bold;
+        color: #333;
+      }
+
+      /* Charging Stations List */
+      .station-list {
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .station-item {
+        background: white;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .station-item:hover {
+        border-color: #667eea;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+      }
+
+      .station-item.selected {
+        border-color: #28a745;
+        background: #f0fff4;
+        box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
+      }
+
+      .station-item.unreachable {
+        opacity: 0.6;
+        border-color: #dc3545;
+        background: #fff5f5;
+        cursor: not-allowed;
+      }
+
+      .station-name {
+        font-weight: bold;
+        font-size: 14px;
+        color: #333;
+        margin-bottom: 6px;
+      }
+
+      .station-details {
+        font-size: 12px;
+        color: #666;
+        line-height: 1.6;
+      }
+
+      .station-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-right: 6px;
+        margin-top: 4px;
+      }
+
+      .badge-reachable {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .badge-unreachable {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .badge-fast {
+        background: #cce5ff;
+        color: #004085;
+      }
+
+      /* Messages */
+      .message {
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .message-info {
+        background: #d1ecf1;
+        border-left: 4px solid #17a2b8;
+        color: #0c5460;
+      }
+
+      .message-success {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+        color: #155724;
+      }
+
+      .message-warning {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        color: #856404;
+      }
+
+      .message-danger {
+        background: #f8d7da;
+        border-left: 4px solid #dc3545;
+        color: #721c24;
+      }
+
+      /* AR Styles */
+      .ar-controls {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 2500;
+        display: none;
+      }
+
+      .ar-controls.active {
+        display: block;
+      }
+
+      .ar-controls button {
+        display: block;
+        margin-bottom: 10px;
+        padding: 12px 20px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        border: 2px solid white;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: bold;
+      }
+
+      #arOverlay {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2500;
+        background: rgba(0, 0, 0, 0.85);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        text-align: center;
+        display: none;
+        max-width: 90%;
+      }
+
+      #arOverlay.active {
+        display: block;
+      }
+
+      .ar-info {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2500;
+        background: rgba(0, 0, 0, 0.85);
+        color: white;
+        padding: 15px 25px;
+        border-radius: 25px;
+        font-size: 14px;
+        display: none;
+      }
+
+      .ar-info.active {
+        display: block;
+      }
+
+      /* Scrollbar Styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #667eea;
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: #764ba2;
+      }
+    </style>
+  </head>
+  <body>
+    
+    <div id="panelContainer">
+      <button id="panelToggle" onclick="togglePanel()">
+        <span id="toggleIcon">▼</span> EV Journey Simulator
+      </button>
+      
+      <div id="panel">
+        <h2 style="margin: 0 0 15px 0; color: #333; font-size: 20px;">🚗 EV Journey Planning</h2>
+        
+        <!-- Vehicle Info -->
+        <div class="vehicle-card" id="vehicleCard">
+          <div class="vehicle-name">
+            <span id="vehicleIcon">🚙</span>
+            <span id="vehicleName">Standard EV</span>
+          </div>
+          <div class="vehicle-specs">
+            <div class="spec-item">
+              <div class="spec-label">Battery Capacity</div>
+              <div class="spec-value" id="specBattery">60 kWh</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-label">Max Range</div>
+              <div class="spec-value" id="specRange">350 km</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-label">Efficiency</div>
+              <div class="spec-value" id="specEfficiency">17.1 kWh/100km</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-label">Current Location</div>
+              <div class="spec-value" id="specLocation">Johannesburg</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Battery Status -->
+        <div class="battery-status">
+          <div class="battery-header">
+            <span>🔋 Battery Status</span>
+            <span id="batteryPercent">75%</span>
+          </div>
+          <div class="battery-bar-container">
+            <div class="battery-bar good" id="batteryBar" style="width: 75%;">
+              <span id="batteryText">262 km available</span>
+            </div>
+          </div>
+          <div class="range-info">
+            <span>⚡ <span id="energyAvailable">45.0</span> kWh available</span>
+            <span>📍 Safe range: <span id="safeRange">210</span> km</span>
+          </div>
+        </div>
+
+        <!-- Journey Planner -->
+        <div class="section">
+          <h3>📍 Plan Your Journey</h3>
+          
+          <div class="input-group">
+            <label for="destination">Where would you like to go?</label>
+            <select id="destination" onchange="selectDestination()">
+              <option value="">-- Select Destination --</option>
+              <option value="pretoria">Pretoria (56 km)</option>
+              <option value="soweto">Soweto (25 km)</option>
+              <option value="centurion">Centurion (45 km)</option>
+              <option value="krugersdorp">Krugersdorp (40 km)</option>
+              <option value="midrand">Midrand (28 km)</option>
+            </select>
+          </div>
+
+          <div id="journeyInfo" style="display: none;">
+            <div class="journey-status">
+              <div class="status-item">
+                <span class="status-label">📏 Distance</span>
+                <span class="status-value" id="journeyDistance">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">⚡ Energy Required</span>
+                <span class="status-value" id="journeyEnergy">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">🔋 Battery After Journey</span>
+                <span class="status-value" id="journeyBatteryAfter">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">⏱️ Est. Travel Time</span>
+                <span class="status-value" id="journeyTime">--</span>
+              </div>
+            </div>
+
+            <div id="journeyMessage"></div>
+
+            <button class="btn btn-primary" onclick="startJourney()" id="startJourneyBtn">
+              🚗 Start Journey
+            </button>
+          </div>
+        </div>
+
+        <!-- Charging Stations -->
+        <div class="section" id="chargingSection" style="display: none;">
+          <h3>⚡ Nearby Charging Stations</h3>
+          <div id="stationsList" class="station-list"></div>
+          <button class="btn btn-success" onclick="navigateToStation()" id="navigateBtn" disabled>
+            🗺️ Navigate to Selected Station
+          </button>
+        </div>
+
+        <!-- Actions -->
+        <div class="section">
+          <h3>🎯 Actions</h3>
+          <button class="btn btn-info" onclick="findChargers()">
+            🔍 Find Charging Stations
+          </button>
+          <button class="btn btn-success" onclick="chargeVehicle()" id="chargeBtn" disabled>
+            ⚡ Charge Vehicle
+          </button>
+          <button class="btn btn-warning" onclick="toggleARView()" id="arBtn">
+            📱 AR View
+          </button>
+          <button class="btn btn-danger" onclick="resetSimulation()">
+            🔄 Reset Simulation
+          </button>
+        </div>
+
+        <!-- Results/Messages -->
+        <div id="messages"></div>
+      </div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- AR View -->
+    <div id="arView">
+      <a-scene
+        embedded
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+        vr-mode-ui="enabled: false"
+        renderer="logarithmicDepthBuffer: true;">
+        <a-camera gps-camera rotation-reader look-controls-enabled="true" wasd-controls-enabled="false"></a-camera>
+        <a-entity id="arStations"></a-entity>
+      </a-scene>
+    </div>
+
+    <div class="ar-controls" id="arControls">
+      <button onclick="recenterAR()">🎯 Recenter</button>
+      <button onclick="toggleARView()">✖️ Close AR</button>
+    </div>
+
+    <div id="arOverlay">
+      <h3>📱 AR Mode Activated</h3>
+      <p>Point your camera to see nearby charging stations in augmented reality</p>
+      <p style="font-size: 12px; margin-top: 15px; opacity: 0.8;">Move your device slowly to look around</p>
+    </div>
+
+    <div class="ar-info" id="arInfo">
+      <span id="arInfoText">Scanning for stations...</span>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+    <script>
+      // === SIMULATION STATE ===
+      const vehicle = {
+        name: 'Standard EV',
+        icon: '🚙',
+        battery: 60, // kWh
+        maxRange: 350, // km
+        efficiency: 17.14, // kWh per 100km (60/350*100)
+        soc: 75, // State of Charge %
+        lat: -26.2041,
+        lng: 28.0473,
+        location: 'Johannesburg'
+      };
+
+      // Destinations around Johannesburg
+      const destinations = {
+        pretoria: { name: 'Pretoria', lat: -25.7479, lng: 28.2293, distance: 56 },
+        soweto: { name: 'Soweto', lat: -26.2678, lng: 27.8581, distance: 25 },
+        centurion: { name: 'Centurion', lat: -25.8601, lng: 28.1889, distance: 45 },
+        krugersdorp: { name: 'Krugersdorp', lat: -26.0858, lng: 27.7676, distance: 40 },
+        midrand: { name: 'Midrand', lat: -25.9895, lng: 28.1287, distance: 28 }
+      };
+
+      // Charging stations
+      const chargingStations = [
+        { id: 1, name: "Sandton City Charging Hub", lat: -26.1076, lng: 28.0567, power: 150, type: "DC Fast", available: 3, cost: 8.50 },
+        { id: 2, name: "Rosebank Mall EV Station", lat: -26.1449, lng: 28.0407, power: 50, type: "DC Fast", available: 2, cost: 7.20 },
+        { id: 3, name: "Melrose Arch Charging Point", lat: -26.1334, lng: 28.0707, power: 22, type: "AC", available: 4, cost: 4.50 },
+        { id: 4, name: "Fourways Mall ChargeZone", lat: -26.0119, lng: 28.0078, power: 100, type: "DC Fast", available: 1, cost: 8.00 },
+        { id: 5, name: "Hyde Park Corner Station", lat: -26.1277, lng: 28.0406, power: 50, type: "DC Fast", available: 2, cost: 7.20 },
+        { id: 6, name: "Montecasino EV Hub", lat: -26.0349, lng: 27.9877, power: 75, type: "DC Fast", available: 3, cost: 7.80 },
+        { id: 7, name: "Bryanston Shopping Centre", lat: -26.0549, lng: 28.0206, power: 22, type: "AC", available: 5, cost: 4.50 },
+        { id: 8, name: "Cresta Mall Charging", lat: -26.1307, lng: 27.9885, power: 50, type: "DC Fast", available: 1, cost: 7.20 }
+      ];
+
+      let map, userMarker, destinationMarker;
+      let chargingMarkers = [];
+      let routingControl = null;
+      let selectedStation = null;
+      let selectedDestination = null;
+      let panelVisible = true;
+      let arActive = false;
+      let atStation = false;
+
+      // === INITIALIZATION ===
+      function initMap() {
+        map = L.map('map').setView([vehicle.lat, vehicle.lng], 11);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 19
+        }).addTo(map);
+
+        updateUserMarker();
+        updateUI();
+      }
+
+      function updateUserMarker() {
+        if (userMarker) {
+          map.removeLayer(userMarker);
+        }
+
+        const blueIcon = L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        });
+
+        userMarker = L.marker([vehicle.lat, vehicle.lng], {icon: blueIcon})
+          .addTo(map)
+          .bindPopup(`<b>Your EV</b><br>Battery: ${vehicle.soc.toFixed(1)}%<br>Range: ${calculateRemainingRange().toFixed(0)} km`)
+          .openPopup();
+      }
+
+      // === CALCULATIONS ===
+      function calculateRemainingRange() {
+        const availableEnergy = (vehicle.soc / 100) * vehicle.battery;
+        return (availableEnergy / vehicle.efficiency) * 100;
+      }
+
+      function calculateSafeRange() {
+        return calculateRemainingRange() * 0.8; // 20% safety buffer
+      }
+
+      function calculateDistance(lat1, lng1, lat2, lng2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+      }
+
+      function calculateEnergyForDistance(distance) {
+        return (distance / 100) * vehicle.efficiency;
+      }
+
+      // === UI UPDATES ===
+      function updateUI() {
+        // Vehicle specs
+        document.getElementById('vehicleName').textContent = vehicle.name;
+        document.getElementById('vehicleIcon').textContent = vehicle.icon;
+        document.getElementById('specBattery').textContent = vehicle.battery + ' kWh';
+        document.getElementById('specRange').textContent = vehicle.maxRange + ' km';
+        document.getElementById('specEfficiency').textContent = vehicle.efficiency.toFixed(1) + ' kWh/100km';
+        document.getElementById('specLocation').textContent = vehicle.location;
+
+        // Battery status
+        const remainingRange = calculateRemainingRange();
+        const safeRange = calculateSafeRange();
+        const availableEnergy = (vehicle.soc / 100) * vehicle.battery;
+
+        document.getElementById('batteryPercent').textContent = vehicle.soc.toFixed(1) + '%';
+        document.getElementById('batteryText').textContent = remainingRange.toFixed(0) + ' km available';
+        document.getElementById('energyAvailable').textContent = availableEnergy.toFixed(1);
+        document.getElementById('safeRange').textContent = safeRange.toFixed(0);
+
+        const batteryBar = document.getElementById('batteryBar');
+        batteryBar.style.width = vehicle.soc + '%';
+
+        // Update battery color
+        batteryBar.className = 'battery-bar';
+        if (vehicle.soc < 15) {
+          batteryBar.classList.add('critical');
+        } else if (vehicle.soc < 30) {
+          batteryBar.classList.add('low');
+        } else if (vehicle.soc < 60) {
+          batteryBar.classList.add('medium');
+        } else {
+          batteryBar.classList.add('good');
+        }
+      }
+
+      function showMessage(text, type = 'info') {
+        const messagesDiv = document.getElementById('messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message message-${type}`;
+        messageDiv.innerHTML = text;
+        messagesDiv.appendChild(messageDiv);
+        
+        // Auto-remove after 10 seconds
+        setTimeout(() => {
+          messageDiv.remove();
+        }, 10000);
+      }
+
+      function clearMessages() {
+        document.getElementById('messages').innerHTML = '';
+      }
+
+      // === JOURNEY PLANNING ===
+      function selectDestination() {
+        const destSelect = document.getElementById('destination');
+        const destKey = destSelect.value;
+        
+        if (!destKey) {
+          document.getElementById('journeyInfo').style.display = 'none';
+          if (destinationMarker) {
+            map.removeLayer(destinationMarker);
+            destinationMarker = null;
+          }
+          return;
+        }
+
+        selectedDestination = destinations[destKey];
+        const distance = selectedDestination.distance;
+        const energyRequired = calculateEnergyForDistance(distance);
+        const socRequired = (energyRequired / vehicle.battery) * 100;
+        const batteryAfter = vehicle.soc - socRequired;
+        const travelTime = Math.round((distance / 80) * 60); // Assuming 80 km/h average
+
+        // Update journey info
+        document.getElementById('journeyDistance').textContent = distance + ' km';
+        document.getElementById('journeyEnergy').textContent = energyRequired.toFixed(2) + ' kWh';
+        document.getElementById('journeyBatteryAfter').textContent = batteryAfter.toFixed(1) + '% (' + ((batteryAfter/100)*vehicle.battery).toFixed(1) + ' kWh)';
+        document.getElementById('journeyTime').textContent = travelTime + ' min';
+
+        // Show warning/info
+        const messageDiv = document.getElementById('journeyMessage');
+        if (batteryAfter < 0) {
+          messageDiv.innerHTML = `<div class="message message-danger">
+            <strong>⚠️ INSUFFICIENT BATTERY!</strong><br>
+            You need ${energyRequired.toFixed(2)} kWh but only have ${((vehicle.soc/100)*vehicle.battery).toFixed(2)} kWh available.<br>
+            <strong>You must charge before attempting this journey.</strong>
+          </div>`;
+          document.getElementById('startJourneyBtn').disabled = true;
+        } else if (batteryAfter < 20) {
+          messageDiv.innerHTML = `<div class="message message-warning">
+            <strong>⚠️ WARNING: Low battery upon arrival</strong><br>
+            You'll arrive with only ${batteryAfter.toFixed(1)}% battery. Consider charging at destination or finding a charger along the route.
+          </div>`;
+          document.getElementById('startJourneyBtn').disabled = false;
+        } else {
+          messageDiv.innerHTML = `<div class="message message-success">
+            <strong>✅ Sufficient battery for journey</strong><br>
+            You'll arrive with ${batteryAfter.toFixed(1)}% battery remaining.
+          </div>`;
+          document.getElementById('startJourneyBtn').disabled = false;
+        }
+
+        document.getElementById('journeyInfo').style.display = 'block';
+
+        // Add destination marker
+        if (destinationMarker) {
+          map.removeLayer(destinationMarker);
+        }
+
+        const redIcon = L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        });
+
+        destinationMarker = L.marker([selectedDestination.lat, selectedDestination.lng], {icon: redIcon})
+          .addTo(map)
+          .bindPopup(`<b>Destination: ${selectedDestination.name}</b><br>Distance: ${distance} km`);
+
+        // Fit bounds to show both markers
+        const bounds = L.latLngBounds([
+          [vehicle.lat, vehicle.lng],
+          [selectedDestination.lat, selectedDestination.lng]
+        ]);
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+
+      function startJourney() {
+        if (!selectedDestination) return;
+
+        const distance = selectedDestination.distance;
+        const energyRequired = calculateEnergyForDistance(distance);
+        const socRequired = (energyRequired / vehicle.battery) * 100;
+
+        if (vehicle.soc < socRequired) {
+          showMessage('⚠️ <strong>Cannot start journey</strong> - insufficient battery!', 'danger');
+          return;
+        }
+
+        clearMessages();
+        showMessage(`🚗 <strong>Journey Started to ${selectedDestination.name}</strong><br>Distance: ${distance} km | Energy consumption: ${energyRequired.toFixed(2)} kWh`, 'info');
+
+        // Simulate journey with progress
+        let progress = 0;
+        const steps = 20;
+        const interval = 150;
+
+        const journeyInterval = setInterval(() => {
+          progress++;
+          
+          if (progress >= steps) {
+            clearInterval(journeyInterval);
+            completeJourney();
+            return;
+          }
+
+          // Update position
+          const ratio = progress / steps;
+          vehicle.lat = vehicle.lat + (selectedDestination.lat - vehicle.lat) * (1/steps);
+          vehicle.lng = vehicle.lng + (selectedDestination.lng - vehicle.lng) * (1/steps);
+          vehicle.soc -= socRequired / steps;
+
+          updateUserMarker();
+          updateUI();
+        }, interval);
+      }
+
+      function completeJourney() {
+        vehicle.lat = selectedDestination.lat;
+        vehicle.lng = selectedDestination.lng;
+        vehicle.location = selectedDestination.name;
+
+        updateUserMarker();
+        updateUI();
+
+        showMessage(`✅ <strong>Journey Complete!</strong><br>You've arrived at ${selectedDestination.name}.<br>Battery remaining: ${vehicle.soc.toFixed(1)}% (${calculateRemainingRange().toFixed(0)} km range)`, 'success');
+
+        if (vehicle.soc < 30) {
+          showMessage(`⚠️ <strong>Low Battery Warning</strong><br>Your battery is at ${vehicle.soc.toFixed(1)}%. Consider finding a charging station.`, 'warning');
+        }
+
+        // Reset journey planning
+        document.getElementById('destination').value = '';
+        document.getElementById('journeyInfo').style.display = 'none';
+        selectedDestination = null;
+
+        if (destinationMarker) {
+          map.removeLayer(destinationMarker);
+          destinationMarker = null;
+        }
+      }
+
+      // === CHARGING STATIONS ===
+      function findChargers() {
+        clearChargingMarkers();
+        clearMessages();
+
+        const safeRange = calculateSafeRange();
+        const reachableStations = [];
+        const unreachableStations = [];
+
+        const greenIcon = L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        });
+
+        const orangeIcon = L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        });
+
+        chargingStations.forEach(station => {
+          const distance = calculateDistance(vehicle.lat, vehicle.lng, station.lat, station.lng);
+          const stationData = {...station, distance: distance};
+
+          if (distance <= safeRange) {
+            reachableStations.push(stationData);
+            const marker = L.marker([station.lat, station.lng], {icon: greenIcon})
+              .addTo(map)
+              .bindPopup(`<b>${station.name}</b><br>✅ REACHABLE<br>Distance: ${distance.toFixed(1)} km<br>${station.power}kW ${station.type}`);
+            chargingMarkers.push(marker);
+          } else {
+            unreachableStations.push(stationData);
+            const marker = L.marker([station.lat, station.lng], {icon: orangeIcon})
+              .addTo(map)
+              .bindPopup(`<b>${station.name}</b><br>⚠️ OUT OF RANGE<br>Distance: ${distance.toFixed(1)} km<br>${station.power}kW ${station.type}`);
+            chargingMarkers.push(marker);
+          }
+        });
+
+        displayChargingStations(reachableStations, unreachableStations);
+
+        if (reachableStations.length === 0) {
+          showMessage(`⚠️ <strong>No reachable charging stations found!</strong><br>Your safe range is ${safeRange.toFixed(0)} km, but all nearby stations are further away.<br>Current battery: ${vehicle.soc.toFixed(1)}%`, 'danger');
+        } else {
+          showMessage(`✅ Found ${reachableStations.length} reachable charging station(s) within ${safeRange.toFixed(0)} km`, 'success');
+        }
+
+        document.getElementById('chargingSection').style.display = 'block';
+      }
+
+      function displayChargingStations(reachable, unreachable) {
+        const listDiv = document.getElementById('stationsList');
+        listDiv.innerHTML = '';
+
+        reachable.sort((a, b) => a.distance - b.distance);
+
+        reachable.forEach(station => {
+          const energyNeeded = calculateEnergyForDistance(station.distance);
+          const socAfterDrive = vehicle.soc - ((energyNeeded / vehicle.battery) * 100);
+
+          const div = document.createElement('div');
+          div.className = 'station-item';
+          div.onclick = () => selectStation(station);
+          div.innerHTML = `
+            <div class="station-name">${station.name}</div>
+            <div class="station-details">
+              📍 ${station.distance.toFixed(1)} km away | ⏱️ ~${Math.round((station.distance/60)*60)} min<br>
+              ⚡ ${station.power}kW ${station.type} | 🔌 ${station.available} plugs<br>
+              💰 R${station.cost}/kWh | 🔋 ${socAfterDrive.toFixed(1)}% upon arrival
+            </div>
+            <span class="station-badge badge-reachable">✅ REACHABLE</span>
+            ${station.type.includes('Fast') ? '<span class="station-badge badge-fast">⚡ FAST CHARGING</span>' : ''}
+          `;
+          listDiv.appendChild(div);
+        });
+
+        unreachable.sort((a, b) => a.distance - b.distance);
+        unreachable.forEach(station => {
+          const div = document.createElement('div');
+          div.className = 'station-item unreachable';
+          div.innerHTML = `
+            <div class="station-name">${station.name}</div>
+            <div class="station-details">
+              📍 ${station.distance.toFixed(1)} km away<br>
+              ⚡ ${station.power}kW ${station.type} | 🔌 ${station.available} plugs<br>
+              ⚠️ Need ${(station.distance - calculateSafeRange()).toFixed(1)} km more range
+            </div>
+            <span class="station-badge badge-unreachable">❌ OUT OF RANGE</span>
+          `;
+          listDiv.appendChild(div);
+        });
+      }
+
+      function selectStation(station) {
+        selectedStation = station;
+        document.getElementById('navigateBtn').disabled = false;
+        
+        // Highlight selected
+        document.querySelectorAll('.station-item').forEach(el => el.classList.remove('selected'));
+        event.currentTarget.classList.add('selected');
+
+        showMessage(`📍 Selected: <strong>${station.name}</strong><br>Distance: ${station.distance.toFixed(1)} km | Power: ${station.power}kW`, 'info');
+      }
+
+      function navigateToStation() {
+        if (!selectedStation) return;
+
+        clearMessages();
+        showMessage(`🗺️ <strong>Navigating to ${selectedStation.name}</strong><br>Distance: ${selectedStation.distance.toFixed(1)} km`, 'info');
+
+        if (routingControl) {
+          map.removeControl(routingControl);
+        }
+
+        routingControl = L.Routing.control({
+          waypoints: [
+            L.latLng(vehicle.lat, vehicle.lng),
+            L.latLng(selectedStation.lat, selectedStation.lng)
+          ],
+          routeWhileDragging: false,
+          show: false,
+          createMarker: function() { return null; }
+        }).addTo(map);
+
+        routingControl.on('routesfound', function(e) {
+          const route = e.routes[0];
+          const distance = (route.summary.totalDistance / 1000);
+          
+          // Simulate arrival
+          setTimeout(() => {
+            arriveAtStation(selectedStation, distance);
+          }, 2000);
+        });
+      }
+
+      function arriveAtStation(station, distance) {
+        const energyUsed = calculateEnergyForDistance(distance);
+        const socUsed = (energyUsed / vehicle.battery) * 100;
+        
+        vehicle.soc -= socUsed;
+        vehicle.lat = station.lat;
+        vehicle.lng = station.lng;
+        vehicle.location = station.name;
+
+        updateUserMarker();
+        updateUI();
+
+        atStation = true;
+        document.getElementById('chargeBtn').disabled = false;
+
+        showMessage(`✅ <strong>Arrived at ${station.name}!</strong><br>Energy used: ${energyUsed.toFixed(2)} kWh<br>Current battery: ${vehicle.soc.toFixed(1)}%<br><br>You can now charge your vehicle.`, 'success');
+      }
+
+      function chargeVehicle() {
+        if (!atStation || !selectedStation) {
+          showMessage('⚠️ You must be at a charging station to charge your vehicle. Navigate to a station first.', 'warning');
+          return;
+        }
+
+        if (vehicle.soc >= 95) {
+          showMessage('✅ Battery is already sufficiently charged!', 'info');
+          return;
+        }
+
+        clearMessages();
+        const startSOC = vehicle.soc;
+        const targetSOC = 80;
+        const chargingPower = selectedStation.power;
+        const energyNeeded = ((targetSOC - startSOC) / 100) * vehicle.battery;
+        const timeMinutes = (energyNeeded / chargingPower) * 60;
+        const cost = energyNeeded * selectedStation.cost;
+
+        showMessage(`🔌 <strong>Charging at ${selectedStation.name}</strong><br>
+          Power: ${chargingPower}kW ${selectedStation.type}<br>
+          From ${startSOC.toFixed(1)}% to ${targetSOC}%<br>
+          Time: ~${timeMinutes.toFixed(0)} minutes<br>
+          Cost: R${cost.toFixed(2)}`, 'info');
+
+        // Simulate charging
+        const steps = 30;
+        const increment = (targetSOC - startSOC) / steps;
+        let step = 0;
+
+        const chargingInterval = setInterval(() => {
+          step++;
+          vehicle.soc += increment;
+
+          if (step >= steps || vehicle.soc >= targetSOC) {
+            clearInterval(chargingInterval);
+            vehicle.soc = targetSOC;
+            updateUI();
+            updateUserMarker();
+            showMessage(`✅ <strong>Charging Complete!</strong><br>
+              Battery: ${vehicle.soc.toFixed(1)}%<br>
+              Range: ${calculateRemainingRange().toFixed(0)} km<br>
+              Energy added: ${energyNeeded.toFixed(2)} kWh<br>
+              Total cost: R${cost.toFixed(2)}<br><br>
+              You can now continue your journey.`, 'success');
+            return;
+          }
+
+          updateUI();
+          updateUserMarker();
+        }, 100);
+      }
+
+      function clearChargingMarkers() {
+        chargingMarkers.forEach(marker => map.removeLayer(marker));
+        chargingMarkers = [];
+        selectedStation = null;
+        atStation = false;
+        document.getElementById('navigateBtn').disabled = true;
+        document.getElementById('chargeBtn').disabled = true;
+      }
+
+      // === AR FUNCTIONALITY ===
+      function toggleARView() {
+        arActive = !arActive;
+        const arView = document.getElementById('arView');
+        const mapView = document.getElementById('map');
+        const arBtn = document.getElementById('arBtn');
+        const arOverlay = document.getElementById('arOverlay');
+        const arInfo = document.getElementById('arInfo');
+        const arControls = document.getElementById('arControls');
+
+        if (arActive) {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showMessage('⚠️ Camera access is not supported on this device/browser', 'warning');
+            arActive = false;
+            return;
+          }
+
+          navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+          })
+            .then(() => {
+              mapView.style.display = 'none';
+              arView.classList.add('active');
+              arOverlay.classList.add('active');
+              arInfo.classList.add('active');
+              arControls.classList.add('active');
+              arBtn.textContent = '🗺️ Map View';
+
+              setTimeout(() => arOverlay.classList.remove('active'), 4000);
+              addARMarkers();
+            })
+            .catch(() => {
+              showMessage('⚠️ Camera access denied. AR requires camera permissions.', 'warning');
+              arActive = false;
+            });
+        } else {
+          arView.classList.remove('active');
+          mapView.style.display = 'block';
+          arOverlay.classList.remove('active');
+          arInfo.classList.remove('active');
+          arControls.classList.remove('active');
+          arBtn.textContent = '📱 AR View';
+        }
+      }
+
+      function addARMarkers() {
+        const arStations = document.getElementById('arStations');
+        if (!arStations) return;
+
+        arStations.innerHTML = '';
+        const safeRange = calculateSafeRange();
+        let reachableCount = 0;
+
+        chargingStations.forEach(station => {
+          const distance = calculateDistance(vehicle.lat, vehicle.lng, station.lat, station.lng);
+          const isReachable = distance <= safeRange;
+          if (isReachable) reachableCount++;
+
+          const color = isReachable ? '#28a745' : '#dc3545';
+
+          const arMarker = document.createElement('a-entity');
+          arMarker.setAttribute('gps-entity-place', `latitude: ${station.lat}; longitude: ${station.lng}`);
+          arMarker.innerHTML = `
+            <a-box position="0 1 0" scale="3 4 3" color="${color}"
+              animation="property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear"></a-box>
+            <a-cone position="0 4 0" radius-bottom="1.5" radius-top="0.1" height="2" color="#ffc107"
+              animation="property: position; to: 0 5 0; dir: alternate; loop: true; dur: 1200"></a-cone>
+            <a-text value="${station.name}" align="center" position="0 7 0" scale="5 5 5"
+              color="#FFFFFF" background="#000000" width="3"></a-text>
+            <a-text value="${distance.toFixed(1)} km | ${station.power}kW" align="center" position="0 5.5 0"
+              scale="4 4 4" color="${isReachable ? '#FFEB3B' : '#FF5252'}" background="#000000" width="3"></a-text>
+          `;
+          arStations.appendChild(arMarker);
+        });
+
+        document.getElementById('arInfoText').textContent = 
+          reachableCount > 0 
+            ? `⚡ ${reachableCount} reachable station(s) | Range: ${safeRange.toFixed(0)} km`
+            : `⚠️ No stations in range (${safeRange.toFixed(0)} km)`;
+      }
+
+      function recenterAR() {
+        showMessage('🎯 AR view recentered. Point your device at the horizon and look around.', 'info');
+        addARMarkers();
+      }
+
+      // === UTILITY ===
+      function togglePanel() {
+        panelVisible = !panelVisible;
+        const panel = document.getElementById('panel');
+        const icon = document.getElementById('toggleIcon');
+        
+        if (panelVisible) {
+          panel.classList.remove('hidden');
+          icon.textContent = '▼';
+        } else {
+          panel.classList.add('hidden');
+          icon.textContent = '▶';
+        }
+      }
+
+      function resetSimulation() {
+        if (!confirm('Reset simulation? This will return you to Johannesburg with 75% battery.')) return;
+
+        vehicle.soc = 75;
+        vehicle.lat = -26.2041;
+        vehicle.lng = 28.0473;
+        vehicle.location = 'Johannesburg';
+
+        clearChargingMarkers();
+        clearMessages();
+        
+        if (destinationMarker) {
+          map.removeLayer(destinationMarker);
+          destinationMarker = null;
+        }
+        
+        if (routingControl) {
+          map.removeControl(routingControl);
+          routingControl = null;
+        }
+
+        selectedDestination = null;
+        selectedStation = null;
+        atStation = false;
+
+        document.getElementById('destination').value = '';
+        document.getElementById('journeyInfo').style.display = 'none';
+        document.getElementById('chargingSection').style.display = 'none';
+
+        updateUserMarker();
+        updateUI();
+        map.setView([vehicle.lat, vehicle.lng], 11);
+
+        showMessage('🔄 Simulation reset to starting position.', 'info');
+      }
+
+      // === INITIALIZATION ===
+      window.onload = function() {
+        initMap();
+        updateUI();
+        showMessage('👋 <strong>Welcome to the EV Journey Simulator!</strong><br>Plan journeys, find charging stations, and experience EV ownership in South Africa.', 'info');
+      };
+    </script>
+  </body>
+</html>
